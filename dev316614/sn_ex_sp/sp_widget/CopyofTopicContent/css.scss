@@ -272,7 +272,7 @@ mark {
 
     .full-width-drop-down {
       width: 100%;
-      border: 1px solid $border;
+      border: 1px solid $border-tertiary;
       border-radius: 4px;
       font-weight: $headings-font-weight;
     }
@@ -517,10 +517,10 @@ mark {
 
 @media only screen and (min-device-width: 768px) and (max-device-width: 1024px) {
   .browse-elevation-mobile .title-item-filters {
-    justify-content: flex-start !important;&#13;
-    width: 100%;&#13;
-    flex-direction: column;&#13;
-    align-items: initial !important;&#13;
+    justify-content: flex-start !important;
+    width: 100%;
+    flex-direction: column;
+    align-items: initial !important;
   }
   
   .aiseach-mobile-padding {

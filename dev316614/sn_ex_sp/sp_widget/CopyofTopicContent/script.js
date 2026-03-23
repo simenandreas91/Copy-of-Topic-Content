@@ -29,7 +29,11 @@
 
     data.redKnowledgeBaseIds = [];
     if (options.red_knowledge_bases) {
-        data.redKnowledgeBaseIds = options.red_knowledge_bases.split(',');
+        data.redKnowledgeBaseIds = options.red_knowledge_bases.split(',').map(function(sysId) {
+            return sysId.trim();
+        }).filter(function(sysId) {
+            return !!sysId;
+        });
     }
 
     if (data.isLearningUpdated) {
@@ -66,6 +70,8 @@
     var REQUESTS = sn_i18n.Message.getMessage("sn_ex_sp", "Requests");
     var ARTICLES = gs.getMessage("Articles");
     var COURSES = gs.getMessage("Courses");
+    var RED_KNOWLEDGE_FILTER_ID = '__red_kb__';
+    var RED_KNOWLEDGE_FILTER_NAME = gs.getMessage("Styrende dokumenter");
     data.showRedirectToGlobal = options.show_global_redirect === 'true';
     data.isNowAssistEnabled = $sp.isNowAssistEnabled();
 
@@ -247,11 +253,14 @@
 
             }
         }
+        if (!isValidFilter(data.filterOptions, data.filterBy)) {
+            data.filterBy = '';
+        }
         // do not fetch featured content on show more action
         if (!input || input.action !== actions.showMore) {
             var taxonomyUtil = new global.TaxonomyPortalUtil();
             var featuredContentCount = parseInt(gs.getProperty("taxonomy.content.featured_content_limit", "5"));
-            data.featuredContent = new TopicServiceUtil().getFeaturedContent(data.sys_id, featuredContentCount, data.isMobileApp, data.filterBy);
+            data.featuredContent = getFeaturedContent(data.sys_id, featuredContentCount, data.isMobileApp, data.filterBy);
             var featuredExcludeContent = getContentIdList(data.featuredContent);
             data.featuredContent = data.featuredContent.map(function(featuredItem) {
                 featuredItem.isFeatured = true;
@@ -264,15 +273,7 @@
             data.limit = data.limit - featuredExcludeContent.length;
         }
 
-        var filterOptions = data.filterOptions.map(function(filter) {
-            return filter.sysId;
-        });
-
-        if (data.filterBy) {
-            filterOptions = [data.filterBy];
-        }
-
-        var content = getContentForTopic(data.limit, data.isMobileApp, data.excludeList, filterOptions);
+        var content = getContentItemsForCurrentFilter(data.limit, data.isMobileApp, data.excludeList, data.filterBy);
 
         //Check if the length of content is same as limit then show "show more button"
         if (data.limit + 1 === content.length) {
@@ -299,21 +300,118 @@
     }
 
     function getContentForTopic(limit, isMobile, excludeItems, contentConfigIds) {
+        return fetchTopicContent(limit + 1, isMobile, excludeItems, contentConfigIds);
+    }
+
+    function fetchTopicContent(limit, isMobile, excludeItems, contentConfigIds) {
         var includeChildTopics = true;
         if ((isMobile && gs.getProperty('sn_ex_sp.u_allow.rollup.mesp') === 'false') || options.content_displayed_from === 'Current topic only') {
             includeChildTopics = false;
         }
-        limit = limit + 1;
         if (data.sortBy === "popularity")
             return new TopicServiceUtil().getContentByPopularity(data.sys_id, includeChildTopics, limit, isMobile, excludeItems, contentConfigIds);
         else
             return new TopicServiceUtil().getContent(data.sys_id, includeChildTopics, limit, isMobile, excludeItems, contentConfigIds);
     }
 
+    function getContentItemsForCurrentFilter(limit, isMobile, excludeItems, selectedFilter) {
+        if (selectedFilter === RED_KNOWLEDGE_FILTER_ID) {
+            return getRedKnowledgeBaseContent(limit, isMobile, excludeItems, getKnowledgeContentConfigIds(data.filterOptions));
+        }
+
+        return getContentForTopic(limit, isMobile, excludeItems, getContentConfigIdsForFilter(selectedFilter));
+    }
+
+    function getContentConfigIdsForFilter(selectedFilter) {
+        if (selectedFilter) {
+            return [selectedFilter];
+        }
+
+        return data.filterOptions.filter(function(filter) {
+            return filter.sysId && filter.sysId !== RED_KNOWLEDGE_FILTER_ID;
+        }).map(function(filter) {
+            return filter.sysId;
+        });
+    }
+
+    function getKnowledgeContentConfigIds(filterOptions) {
+        return filterOptions.filter(function(filter) {
+            return filter.contentTable === 'kb_knowledge' && filter.sysId && filter.sysId !== RED_KNOWLEDGE_FILTER_ID;
+        }).map(function(filter) {
+            return filter.sysId;
+        });
+    }
+
+    function getKnowledgeContentConfigId(filterOptions) {
+        var knowledgeConfigIds = getKnowledgeContentConfigIds(filterOptions);
+        return knowledgeConfigIds.length > 0 ? knowledgeConfigIds[0] : '';
+    }
+
+    function getRedKnowledgeBaseContent(limit, isMobile, excludeItems, contentConfigIds) {
+        var requiredCount = limit + 1;
+        var redKnowledgeContent = [];
+        var requestedExclusions = (excludeItems || []).slice();
+        var batchSize = Math.max(requiredCount, 10);
+        var maxAttempts = 10;
+
+        if (contentConfigIds.length === 0 || data.redKnowledgeBaseIds.length === 0) {
+            return redKnowledgeContent;
+        }
+
+        for (var attempt = 0; attempt < maxAttempts && redKnowledgeContent.length < requiredCount; attempt++) {
+            var contentChunk = fetchTopicContent(batchSize, isMobile, requestedExclusions, contentConfigIds);
+            var chunkContentIds = [];
+
+            if (!contentChunk || contentChunk.length === 0) {
+                break;
+            }
+
+            markRedKnowledgeBases(contentChunk);
+            for (var i = 0; i < contentChunk.length; i++) {
+                if (contentChunk[i].content) {
+                    chunkContentIds.push(contentChunk[i].content);
+                }
+
+                if (contentChunk[i].isRedKnowledgeBase) {
+                    redKnowledgeContent.push(contentChunk[i]);
+                    if (redKnowledgeContent.length === requiredCount) {
+                        break;
+                    }
+                }
+            }
+
+            if (chunkContentIds.length === 0 || contentChunk.length < batchSize) {
+                break;
+            }
+
+            requestedExclusions = requestedExclusions.concat(chunkContentIds);
+        }
+
+        return redKnowledgeContent;
+    }
+
+    function getFeaturedContent(topicId, featuredContentCount, isMobile, selectedFilter) {
+        if (selectedFilter !== RED_KNOWLEDGE_FILTER_ID) {
+            return new TopicServiceUtil().getFeaturedContent(topicId, featuredContentCount, isMobile, selectedFilter);
+        }
+
+        var knowledgeContentConfigId = getKnowledgeContentConfigId(data.filterOptions);
+        if (!knowledgeContentConfigId) {
+            return [];
+        }
+
+        var featuredContent = new TopicServiceUtil().getFeaturedContent(topicId, featuredContentCount, isMobile, knowledgeContentConfigId);
+        markRedKnowledgeBases(featuredContent);
+        return featuredContent.filter(function(item) {
+            return item.isRedKnowledgeBase;
+        });
+    }
+
     function getContentConfiguration() {
         var configurations = [{
             sysId: "",
-            name: gs.getMessage("All", "All")
+            name: gs.getMessage("All", "All"),
+            contentTable: ''
         }];
         var contentConfigurationGr = new GlideRecord("taxonomy_content_configuration");
         contentConfigurationGr.addActiveQuery();
@@ -323,11 +421,34 @@
                 continue;
             var configuration = {};
             configuration.sysId = contentConfigurationGr.getUniqueValue();
-            configuration.name = getFilterName(contentConfigurationGr.content_table);
+            configuration.contentTable = contentConfigurationGr.getValue('content_table');
+            configuration.name = getFilterName(configuration.contentTable);
             if (configuration.name)
                 configurations.push(configuration);
         }
+        insertRedKnowledgeBaseFilter(configurations);
         return configurations;
+    }
+
+    function insertRedKnowledgeBaseFilter(configurations) {
+        var knowledgeFilterIndex = -1;
+
+        if (data.redKnowledgeBaseIds.length === 0 || getKnowledgeContentConfigIds(configurations).length === 0) {
+            return;
+        }
+
+        for (var i = 0; i < configurations.length; i++) {
+            if (configurations[i].contentTable === 'kb_knowledge') {
+                knowledgeFilterIndex = i;
+                break;
+            }
+        }
+
+        configurations.splice(knowledgeFilterIndex + 1, 0, {
+            sysId: RED_KNOWLEDGE_FILTER_ID,
+            name: RED_KNOWLEDGE_FILTER_NAME,
+            contentTable: 'kb_knowledge'
+        });
     }
 
     function getFilterName(table) {
