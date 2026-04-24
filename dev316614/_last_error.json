@@ -1,0 +1,6 @@
+{
+  "timestamp": 1777009022614,
+  "time": "2026-04-24T05:37:02.614Z",
+  "error": "{\n  \"error\": \"Error: Invalid field name: template,css,client_script,script,link,option_schema,demo_data\"\n}",
+  "details": "Error: Invalid field name: template,css,client_script,script,link,option_schema,demo_data"
+}

@@ -72,6 +72,7 @@
     var COURSES = gs.getMessage("Courses");
     var RED_KNOWLEDGE_FILTER_ID = '__red_kb__';
     var RED_KNOWLEDGE_FILTER_NAME = gs.getMessage("Styrende dokumenter");
+    var CONTENT_FROM_CURRENT_AND_CHILD_TOPICS = 'Current topic and all child topics';
     data.showRedirectToGlobal = options.show_global_redirect === 'true';
     data.isNowAssistEnabled = $sp.isNowAssistEnabled();
 
@@ -304,14 +305,19 @@
     }
 
     function fetchTopicContent(limit, isMobile, excludeItems, contentConfigIds) {
-        var includeChildTopics = true;
-        if ((isMobile && gs.getProperty('sn_ex_sp.u_allow.rollup.mesp') === 'false') || options.content_displayed_from === 'Current topic only') {
-            includeChildTopics = false;
-        }
+        var includeChildTopics = shouldIncludeChildTopicContent(isMobile);
         if (data.sortBy === "popularity")
             return new TopicServiceUtil().getContentByPopularity(data.sys_id, includeChildTopics, limit, isMobile, excludeItems, contentConfigIds);
         else
             return new TopicServiceUtil().getContent(data.sys_id, includeChildTopics, limit, isMobile, excludeItems, contentConfigIds);
+    }
+
+    function shouldIncludeChildTopicContent(isMobile) {
+        if (isMobile && gs.getProperty('sn_ex_sp.u_allow.rollup.mesp') === 'false') {
+            return false;
+        }
+
+        return options.content_displayed_from === CONTENT_FROM_CURRENT_AND_CHILD_TOPICS;
     }
 
     function getContentItemsForCurrentFilter(limit, isMobile, excludeItems, selectedFilter) {
@@ -566,7 +572,7 @@
         var facetFields = ['_kb_knowledge.topic_level_', '_sc_cat_item.topic_level_', '_sn_lc_course_item.topic_level_'];
         var facetFieldsMobile = ['_kb_knowledge', '_sc_cat_item', '_sn_lc_course_item'];
 
-        if ((!data.isMobileApp || gs.getProperty('sn_ex_sp.u_allow.rollup.mesp') === 'true') && options.content_displayed_from === 'Current topic and all child topics') {
+        if (shouldIncludeChildTopicContent(data.isMobileApp)) {
             return [('"UNION(' + facetFields.map(function(f) {
                 return f + topic_level + '_s';
             }).join(',') + ')"' + ':FACET("' + currentTopicName + '")')];

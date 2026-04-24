@@ -88,7 +88,7 @@
   {
     "name": "content_displayed_from",
     "section": "Behavior",
-    "default_value": "Current topic and all child topics",
+    "default_value": "Current topic only",
     "label": "Content displayed from",
     "type": "choice",
     "choices": [
