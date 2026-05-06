@@ -86,23 +86,6 @@
     "type": "boolean"
   },
   {
-    "name": "content_displayed_from",
-    "section": "Behavior",
-    "default_value": "Current topic only",
-    "label": "Content displayed from",
-    "type": "choice",
-    "choices": [
-      {
-        "label": "Current topic only",
-        "value": "Current topic only"
-      },
-      {
-        "label": "Current topic and all child topics",
-        "value": "Current topic and all child topics"
-      }
-    ]
-  },
-  {
     "hint": "Title name of the widget",
     "name": "title",
     "section": "Presentation",
